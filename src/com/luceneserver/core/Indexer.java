@@ -3,12 +3,14 @@ package com.luceneserver.core;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.List;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
 import org.apache.lucene.analysis.core.WhitespaceTokenizer;
 import org.apache.lucene.analysis.ngram.EdgeNGramTokenFilter;
+import org.apache.lucene.analysis.ngram.NGramTokenFilter;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -22,9 +24,9 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
-
 import org.apache.lucene.search.spell.Dictionary;
 import org.apache.lucene.search.spell.LuceneDictionary;
+import org.apache.lucene.search.suggest.DocumentDictionary;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.analyzing.AnalyzingInfixSuggester;
 import org.apache.lucene.store.Directory;
@@ -46,7 +48,8 @@ public class Indexer {
 
 		JSONArray bookObjectArray = (JSONArray) obj;
 
-		for (int i = 0; i < bookObjectArray.size(); i++) {
+		for (int i = 0; i < bookObjectArray.size(); i++) 
+		{
 			JSONObject lBookObject = (JSONObject) bookObjectArray.get(i);
 			String lstrTitle = lBookObject.get("Title").toString();
 			String lstrCover = lBookObject.get("Cover").toString();
@@ -57,7 +60,7 @@ public class Indexer {
 
 		lIndexWriter.commit();
 		lIndexWriter.close();
-
+		
 	}
 
 	private static void addBookToIndex(IndexWriter pIndexWriter, String pTitle, String pCover, String pAuthor,
@@ -71,7 +74,8 @@ public class Indexer {
 		pIndexWriter.addDocument(lDocument);
 	}
 
-	private static void getBooksFromIndex() throws IOException, ParseException {
+	private static void getBooksFromIndex() throws IOException, ParseException 
+	{
 		IndexReader lReader = DirectoryReader.open(lIndexDirectory);
 		IndexSearcher lSearcher = new IndexSearcher(lReader);
 
@@ -87,12 +91,16 @@ public class Indexer {
 
 	private static void autoSuggest() throws Exception {
 		IndexReader lReader = DirectoryReader.open(lIndexDirectory);
-		Dictionary lDictionary = new LuceneDictionary(lReader, "author");
+		Dictionary lDictionary = new DocumentDictionary(lReader, "title", "title_weight");
 		AnalyzingInfixSuggester suggestor = new AnalyzingInfixSuggester(new RAMDirectory(), new StandardAnalyzer());
 
 		suggestor.build(lDictionary);
-		List<Lookup.LookupResult> lookupResultList = suggestor.lookup("Anne", false, 10000);
-		for (Lookup.LookupResult lookupResult : lookupResultList) {
+		
+		List<Lookup.LookupResult> lookupResultList = suggestor.lookup("ouc", false, 10000);
+		
+		System.out.println("Suggested List : "+lookupResultList.size() + " suggestion");
+		for (Lookup.LookupResult lookupResult : lookupResultList) 
+		{
 			System.out.println(lookupResult.key + ": " + lookupResult.value);
 		}
 		suggestor.close();
@@ -110,18 +118,12 @@ class SuggestionAnalyzer extends Analyzer {
 
 	@Override
 	protected TokenStreamComponents createComponents(String fieldName) {
-		Tokenizer tokenizer = new WhitespaceTokenizer();
-		TokenStream filter = new TokenStream() {
-
-			@Override
-			public boolean incrementToken() throws IOException {
-				// TODO Auto-generated method stub
-				return false;
-			}
-		};
-		filter = new LowerCaseFilter(filter);
-		filter = new EdgeNGramTokenFilter(filter, 1, 29);
-		return new TokenStreamComponents(tokenizer, filter);
+		
+		Tokenizer source = new WhitespaceTokenizer();
+		
+		TokenStream result = new LowerCaseFilter(source);
+		result = new NGramTokenFilter(result, 1, 29);
+		return new TokenStreamComponents(source, result);
 	}
 }
 
