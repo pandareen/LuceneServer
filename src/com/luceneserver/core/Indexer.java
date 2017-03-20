@@ -2,6 +2,7 @@ package com.luceneserver.core;
 
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -29,8 +30,10 @@ import org.apache.lucene.search.spell.LuceneDictionary;
 import org.apache.lucene.search.suggest.DocumentDictionary;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.analyzing.AnalyzingInfixSuggester;
+import org.apache.lucene.search.suggest.analyzing.FreeTextSuggester;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.QueryBuilder;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
@@ -85,18 +88,24 @@ public class Indexer {
 
 		TopDocs lHits = lSearcher.search(lBooksContainingName, 10000);
 		ScoreDoc[] lDocs = lHits.scoreDocs;
-
 		System.out.println("Found " + lDocs.length + " books.");
+		for(int i = 0 ; i < lDocs.length; i++)
+		{
+			System.out.println(lSearcher.doc(lDocs[i].doc).get("title"));
+		}
 	}
 
 	private static void autoSuggest() throws Exception {
 		IndexReader lReader = DirectoryReader.open(lIndexDirectory);
-		Dictionary lDictionary = new DocumentDictionary(lReader, "title", "title_weight");
+		Dictionary lDictionary = new DocumentDictionary(lReader, "title", "title_weight", null, "publisher");
 		AnalyzingInfixSuggester suggestor = new AnalyzingInfixSuggester(new RAMDirectory(), new StandardAnalyzer());
-
+		
 		suggestor.build(lDictionary);
 		
-		List<Lookup.LookupResult> lookupResultList = suggestor.lookup("ouc", false, 10000);
+		HashSet<BytesRef> lSet = new HashSet<BytesRef>();
+		lSet.add(new BytesRef("Berkley Trade".getBytes()));
+		
+		List<Lookup.LookupResult> lookupResultList = suggestor.lookup("Under", lSet, false, 10000);
 		
 		System.out.println("Suggested List : "+lookupResultList.size() + " suggestion");
 		for (Lookup.LookupResult lookupResult : lookupResultList) 
@@ -123,6 +132,19 @@ class SuggestionAnalyzer extends Analyzer {
 		
 		TokenStream result = new LowerCaseFilter(source);
 		result = new NGramTokenFilter(result, 1, 29);
+		return new TokenStreamComponents(source, result);
+	}
+}
+
+class QAnalyzer extends Analyzer {
+
+	@Override
+	protected TokenStreamComponents createComponents(String fieldName) {
+		
+		Tokenizer source = new WhitespaceTokenizer();
+		
+		TokenStream result = new LowerCaseFilter(source);
+		result = new NGramTokenFilter(result, 1, 1000);
 		return new TokenStreamComponents(source, result);
 	}
 }
