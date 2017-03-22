@@ -8,11 +8,19 @@ import java.util.List;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.core.KeywordAnalyzer;
+import org.apache.lucene.analysis.core.KeywordTokenizer;
+import org.apache.lucene.analysis.core.LetterTokenizer;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
+import org.apache.lucene.analysis.core.SimpleAnalyzer;
+import org.apache.lucene.analysis.core.StopAnalyzer;
 import org.apache.lucene.analysis.core.WhitespaceTokenizer;
 import org.apache.lucene.analysis.ngram.EdgeNGramTokenFilter;
 import org.apache.lucene.analysis.ngram.NGramTokenFilter;
+import org.apache.lucene.analysis.standard.ClassicAnalyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.util.CharTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.TextField;
@@ -82,16 +90,16 @@ public class Indexer {
 		IndexReader lReader = DirectoryReader.open(lIndexDirectory);
 		IndexSearcher lSearcher = new IndexSearcher(lReader);
 
-		QueryBuilder lQueryBuilder = new QueryBuilder(new StandardAnalyzer());
+		QueryBuilder lQueryBuilder = new QueryBuilder(new ClassicAnalyzer());
 
-		Query lBooksContainingName = lQueryBuilder.createBooleanQuery("title", "Under");
+		Query lBooksContainingName = lQueryBuilder.createBooleanQuery("author", "Alb");
 
 		TopDocs lHits = lSearcher.search(lBooksContainingName, 10000);
 		ScoreDoc[] lDocs = lHits.scoreDocs;
 		System.out.println("Found " + lDocs.length + " books.");
 		for(int i = 0 ; i < lDocs.length; i++)
 		{
-			System.out.println(lSearcher.doc(lDocs[i].doc).get("title"));
+			System.out.println(lSearcher.doc(lDocs[i].doc).get("author"));
 		}
 	}
 
@@ -118,7 +126,7 @@ public class Indexer {
 	public static void main(String args[]) throws Exception {
 		buildIndex();
 		getBooksFromIndex();
-		autoSuggest();
+		//autoSuggest();
 	}
 
 }
@@ -133,6 +141,18 @@ class SuggestionAnalyzer extends Analyzer {
 		TokenStream result = new LowerCaseFilter(source);
 		result = new NGramTokenFilter(result, 1, 29);
 		return new TokenStreamComponents(source, result);
+	}
+}
+
+class UserSearchAnalyzer extends Analyzer {
+
+	@Override
+	protected TokenStreamComponents createComponents(String fieldName) {
+		Tokenizer lSource = new KeywordTokenizer();
+		
+		TokenStream lResult = new LowerCaseFilter(lSource);
+		
+		return new TokenStreamComponents(lSource, lResult);
 	}
 }
 
