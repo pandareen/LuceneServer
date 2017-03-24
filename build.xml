@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<!-- Configuration of the Ant build system to generate a Jar file --> 
+<project name="luceneserver" default="CreateJar">
+  <target name="CreateJar" description="create luceneserver.jar">
+        <jar jarfile="luceneserver.jar" basedir="WEB-INF/classes" includes="**/*.class" />
+  </target>
+</project>

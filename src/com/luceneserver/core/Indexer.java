@@ -8,19 +8,13 @@ import java.util.List;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
-import org.apache.lucene.analysis.core.KeywordAnalyzer;
 import org.apache.lucene.analysis.core.KeywordTokenizer;
-import org.apache.lucene.analysis.core.LetterTokenizer;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
-import org.apache.lucene.analysis.core.SimpleAnalyzer;
-import org.apache.lucene.analysis.core.StopAnalyzer;
 import org.apache.lucene.analysis.core.WhitespaceTokenizer;
-import org.apache.lucene.analysis.ngram.EdgeNGramTokenFilter;
 import org.apache.lucene.analysis.ngram.NGramTokenFilter;
-import org.apache.lucene.analysis.standard.ClassicAnalyzer;
+import org.apache.lucene.analysis.snowball.SnowballFilter;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
-import org.apache.lucene.analysis.util.CharTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.TextField;
@@ -28,17 +22,18 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.spell.Dictionary;
-import org.apache.lucene.search.spell.LuceneDictionary;
 import org.apache.lucene.search.suggest.DocumentDictionary;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.analyzing.AnalyzingInfixSuggester;
-import org.apache.lucene.search.suggest.analyzing.FreeTextSuggester;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.BytesRef;
@@ -47,13 +42,17 @@ import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
+import com.luceneserver.analyzers.custom.ContainsAnalyzer;
+
 public class Indexer {
 
 	private static final Directory lIndexDirectory = new RAMDirectory();
 
 	private static void buildIndex() throws Exception {
-		IndexWriterConfig lIndexWriterConfig = new IndexWriterConfig();
+		IndexWriterConfig lIndexWriterConfig = new IndexWriterConfig(new ContainsAnalyzer());
+		System.out.println(new ContainsAnalyzer());
 		IndexWriter lIndexWriter = new IndexWriter(lIndexDirectory, lIndexWriterConfig);
+		//lIndexWriter.
 		JSONParser parser = new JSONParser();
 		Object obj = parser.parse(new FileReader("data/books.json"));
 
@@ -89,11 +88,16 @@ public class Indexer {
 	{
 		IndexReader lReader = DirectoryReader.open(lIndexDirectory);
 		IndexSearcher lSearcher = new IndexSearcher(lReader);
-
-		QueryBuilder lQueryBuilder = new QueryBuilder(new ClassicAnalyzer());
-
-		Query lBooksContainingName = lQueryBuilder.createBooleanQuery("author", "Alb");
-
+		Query q = new PhraseQuery("author", "Alb");
+		
+		PhraseQuery phraseQuery = new PhraseQuery("author", "alb*");
+		
+		QueryBuilder lQueryBuilder = new QueryBuilder(new ContainsAnalyzer());
+		
+		//Query lBooksContainingName = lQueryBuilder.createBooleanQuery("Title", "你好 世界 的评论");
+		
+		Query lBooksContainingName = new TermQuery(new Term("title", "你好 世界 的评论"));
+		
 		TopDocs lHits = lSearcher.search(lBooksContainingName, 10000);
 		ScoreDoc[] lDocs = lHits.scoreDocs;
 		System.out.println("Found " + lDocs.length + " books.");
@@ -136,7 +140,7 @@ class SuggestionAnalyzer extends Analyzer {
 	@Override
 	protected TokenStreamComponents createComponents(String fieldName) {
 		
-		Tokenizer source = new WhitespaceTokenizer();
+		Tokenizer source = new StandardTokenizer();
 		
 		TokenStream result = new LowerCaseFilter(source);
 		result = new NGramTokenFilter(result, 1, 29);
@@ -151,7 +155,7 @@ class UserSearchAnalyzer extends Analyzer {
 		Tokenizer lSource = new KeywordTokenizer();
 		
 		TokenStream lResult = new LowerCaseFilter(lSource);
-		
+		lResult = new SnowballFilter(lResult, "English");
 		return new TokenStreamComponents(lSource, lResult);
 	}
 }
