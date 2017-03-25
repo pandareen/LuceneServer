@@ -8,6 +8,7 @@ import java.util.List;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.core.KeywordAnalyzer;
 import org.apache.lucene.analysis.core.KeywordTokenizer;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
 import org.apache.lucene.analysis.core.WhitespaceTokenizer;
@@ -22,6 +23,7 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.IndexSearcher;
@@ -35,31 +37,36 @@ import org.apache.lucene.search.suggest.DocumentDictionary;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.analyzing.AnalyzingInfixSuggester;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.QueryBuilder;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
+import java.io.File;
 
 import com.luceneserver.analyzers.custom.ContainsAnalyzer;
+import com.luceneserver.analyzers.custom.NGramExample;
+import com.luceneserver.constants.LuceneConstants;
 
-public class Indexer {
+public class Indexer implements LuceneConstants {
 
-	private static final Directory lIndexDirectory = new RAMDirectory();
+	private static Directory lIndexDirectory;
 
 	private static void buildIndex() throws Exception {
-		IndexWriterConfig lIndexWriterConfig = new IndexWriterConfig(new ContainsAnalyzer());
+		lIndexDirectory = FSDirectory.open(new File(LUCENE_INDEX_HOME + File.separator + INDEX_NAME).toPath());
+		IndexWriterConfig lIndexWriterConfig = new IndexWriterConfig(new KeywordAnalyzer());
+		lIndexWriterConfig.setOpenMode(OpenMode.CREATE);
 		System.out.println(new ContainsAnalyzer());
 		IndexWriter lIndexWriter = new IndexWriter(lIndexDirectory, lIndexWriterConfig);
-		//lIndexWriter.
+		// lIndexWriter.
 		JSONParser parser = new JSONParser();
 		Object obj = parser.parse(new FileReader("data/books.json"));
 
 		JSONArray bookObjectArray = (JSONArray) obj;
 
-		for (int i = 0; i < bookObjectArray.size(); i++) 
-		{
+		for (int i = 0; i < bookObjectArray.size(); i++) {
 			JSONObject lBookObject = (JSONObject) bookObjectArray.get(i);
 			String lstrTitle = lBookObject.get("Title").toString();
 			String lstrCover = lBookObject.get("Cover").toString();
@@ -70,7 +77,7 @@ public class Indexer {
 
 		lIndexWriter.commit();
 		lIndexWriter.close();
-		
+
 	}
 
 	private static void addBookToIndex(IndexWriter pIndexWriter, String pTitle, String pCover, String pAuthor,
@@ -84,26 +91,25 @@ public class Indexer {
 		pIndexWriter.addDocument(lDocument);
 	}
 
-	private static void getBooksFromIndex() throws IOException, ParseException 
-	{
+	private static void getBooksFromIndex() throws IOException, ParseException {
 		IndexReader lReader = DirectoryReader.open(lIndexDirectory);
 		IndexSearcher lSearcher = new IndexSearcher(lReader);
-		Query q = new PhraseQuery("author", "Alb");
-		
-		PhraseQuery phraseQuery = new PhraseQuery("author", "alb*");
-		
-		QueryBuilder lQueryBuilder = new QueryBuilder(new ContainsAnalyzer());
-		
-		//Query lBooksContainingName = lQueryBuilder.createBooleanQuery("Title", "你好 世界 的评论");
-		
-		Query lBooksContainingName = new TermQuery(new Term("title", "你好 世界 的评论"));
+		// Query q = new PhraseQuery("author", "Alb");
+
+		// PhraseQuery phraseQuery = new PhraseQuery("author", "alb*");
+
+		 QueryBuilder lQueryBuilder = new QueryBuilder(new ContainsAnalyzer());
+
+		 Query lBooksContainingName =
+		 lQueryBuilder.createBooleanQuery("title", "评");
+
+		//Query lBooksContainingName = new TermQuery(new Term("title", "的"));
 		
 		TopDocs lHits = lSearcher.search(lBooksContainingName, 10000);
 		ScoreDoc[] lDocs = lHits.scoreDocs;
 		System.out.println("Found " + lDocs.length + " books.");
-		for(int i = 0 ; i < lDocs.length; i++)
-		{
-			System.out.println(lSearcher.doc(lDocs[i].doc).get("author"));
+		for (int i = 0; i < lDocs.length; i++) {
+			System.out.println(lSearcher.doc(lDocs[i].doc).get("title"));
 		}
 	}
 
@@ -111,17 +117,16 @@ public class Indexer {
 		IndexReader lReader = DirectoryReader.open(lIndexDirectory);
 		Dictionary lDictionary = new DocumentDictionary(lReader, "title", "title_weight", null, "publisher");
 		AnalyzingInfixSuggester suggestor = new AnalyzingInfixSuggester(new RAMDirectory(), new StandardAnalyzer());
-		
+
 		suggestor.build(lDictionary);
-		
+
 		HashSet<BytesRef> lSet = new HashSet<BytesRef>();
 		lSet.add(new BytesRef("Berkley Trade".getBytes()));
-		
+
 		List<Lookup.LookupResult> lookupResultList = suggestor.lookup("Under", lSet, false, 10000);
-		
-		System.out.println("Suggested List : "+lookupResultList.size() + " suggestion");
-		for (Lookup.LookupResult lookupResult : lookupResultList) 
-		{
+
+		System.out.println("Suggested List : " + lookupResultList.size() + " suggestion");
+		for (Lookup.LookupResult lookupResult : lookupResultList) {
 			System.out.println(lookupResult.key + ": " + lookupResult.value);
 		}
 		suggestor.close();
@@ -130,7 +135,7 @@ public class Indexer {
 	public static void main(String args[]) throws Exception {
 		buildIndex();
 		getBooksFromIndex();
-		//autoSuggest();
+		// autoSuggest();
 	}
 
 }
@@ -139,9 +144,9 @@ class SuggestionAnalyzer extends Analyzer {
 
 	@Override
 	protected TokenStreamComponents createComponents(String fieldName) {
-		
+
 		Tokenizer source = new StandardTokenizer();
-		
+
 		TokenStream result = new LowerCaseFilter(source);
 		result = new NGramTokenFilter(result, 1, 29);
 		return new TokenStreamComponents(source, result);
@@ -153,7 +158,7 @@ class UserSearchAnalyzer extends Analyzer {
 	@Override
 	protected TokenStreamComponents createComponents(String fieldName) {
 		Tokenizer lSource = new KeywordTokenizer();
-		
+
 		TokenStream lResult = new LowerCaseFilter(lSource);
 		lResult = new SnowballFilter(lResult, "English");
 		return new TokenStreamComponents(lSource, lResult);
@@ -164,9 +169,9 @@ class QAnalyzer extends Analyzer {
 
 	@Override
 	protected TokenStreamComponents createComponents(String fieldName) {
-		
+
 		Tokenizer source = new WhitespaceTokenizer();
-		
+
 		TokenStream result = new LowerCaseFilter(source);
 		result = new NGramTokenFilter(result, 1, 1000);
 		return new TokenStreamComponents(source, result);
