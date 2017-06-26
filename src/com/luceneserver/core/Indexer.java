@@ -24,6 +24,10 @@ import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.LongPoint;
+import org.apache.lucene.document.SortedDocValuesField;
+import org.apache.lucene.document.SortedNumericDocValuesField;
+import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.ConcurrentMergeScheduler;
 import org.apache.lucene.index.DirectoryReader;
@@ -64,84 +68,115 @@ import com.luceneserver.analyzers.custom.NGramExample;
 import com.luceneserver.constants.LuceneConstants;
 
 public class Indexer implements LuceneConstants {
-	
+
 	private static Directory lIndexDirectory;
 	private static IndexWriter sIndexWriter;
 	private static DirectoryReader sDirectoryReader;
 	private static IndexSearcher sIndexSearcher;
 	private static boolean isIntitialized = false;
-	
-	
+	private static Document lBookDocument = new Document();
+
 	private static void init() throws IOException {
-		
-		if(isIntitialized == true)
-		{
+
+		if (isIntitialized == true) {
 			return;
 		}
-		
+
 		lIndexDirectory = FSDirectory.open(new File(LUCENE_INDEX_HOME + File.separator + INDEX_NAME).toPath());
 		IndexWriterConfig lIndexWriterConfig = new IndexWriterConfig(new ContainsAnalyzer());
-		
-		ConcurrentMergeScheduler lScheduler = new ConcurrentMergeScheduler();
-		lScheduler.setMaxMergesAndThreads(5, 5);
-		lScheduler.disableAutoIOThrottle();
+
 		lIndexWriterConfig.setOpenMode(OpenMode.CREATE_OR_APPEND);
-		lIndexWriterConfig.setMergeScheduler(lScheduler);
 		sIndexWriter = new IndexWriter(lIndexDirectory, lIndexWriterConfig);
 		sDirectoryReader = DirectoryReader.open(sIndexWriter);
 		sIndexWriter.commit();
 		sIndexSearcher = new IndexSearcher(sDirectoryReader);
 		isIntitialized = true;
-		
+
 	}
 
 	private static void buildIndex() throws Exception {
-		
+
 		init();
-		
-//		if(sIndexSearcher.getIndexReader().numDocs() >=  1)
-//		{
-//			return;
-//		}
-		
+
+		// if(sIndexSearcher.getIndexReader().numDocs() >= 1)
+		// {
+		// return;
+		// }
+
 		System.out.println("Building index...");
-		
+
 		JSONParser parser = new JSONParser();
 		Object obj = parser.parse(new FileReader("data/books.json"));
 
 		JSONArray bookObjectArray = (JSONArray) obj;
-		
+
 		System.out.println("Indexing Started...");
-		
+
 		for (int i = 0; i < bookObjectArray.size(); i++) {
 			JSONObject lBookObject = (JSONObject) bookObjectArray.get(i);
 			String lstrTitle = lBookObject.get("Title").toString();
+			long llPages = Long.parseLong(lBookObject.get("Pages").toString());
+			long llISBN10 = 1;
+			long llISBN13 = 1;
+			try {
+				llISBN10 = Long.parseLong(lBookObject.get("ISBN10").toString());
+				llISBN13 = Long.parseLong(lBookObject.get("ISBN13").toString());
+			} catch (Exception e) {
+			}
 			String lstrCover = lBookObject.get("Cover").toString();
 			String lstrAuthor = lBookObject.get("Author").toString();
 			String lstrPublisher = lBookObject.get("Publisher").toString();
-			addBookToIndex(sIndexWriter, lstrTitle, lstrCover, lstrAuthor, lstrPublisher);
+			lBookDocument = StaticBookDocument.getBookdocument(lstrTitle, llPages, llISBN10, llISBN13, lstrCover, lstrAuthor, lstrPublisher);
+			//addBookToIndex(sIndexWriter, lstrTitle, lstrCover, lstrAuthor, lstrPublisher, llPages, llISBN10, llISBN13);
+			sIndexWriter.addDocument(lBookDocument);
 		}
 		
-		//sIndexWriter.commit();
-		
+
+		sIndexWriter.commit();
+
 		System.out.println("Indexing Finished...");
-		
+
 	}
 
 	private static void addBookToIndex(IndexWriter pIndexWriter, String pTitle, String pCover, String pAuthor,
-			String pPublisher) throws IOException {
-		
+			String pPublisher, long pPages, long pISBN10, long pISBN13) throws IOException {
+
 		Document lDocument = new Document();
-		lDocument.add(new TextField("title", pTitle, Field.Store.YES));
-		lDocument.add(new TextField("cover", pCover, Field.Store.YES));
-		lDocument.add(new TextField("author", pAuthor, Field.Store.YES));
-		lDocument.add(new TextField("publisher", pPublisher, Field.Store.YES));
+		lDocument.add(new TextField("title", pTitle, Field.Store.NO));
+		lDocument.add(new TextField("cover", pCover, Field.Store.NO));
+		lDocument.add(new TextField("author", pAuthor, Field.Store.NO));
+		lDocument.add(new TextField("publisher", pPublisher, Field.Store.NO));
+		
+
+		lDocument.add(new StoredField("title", pTitle));
+		lDocument.add(new StoredField("cover", pCover));
+		lDocument.add(new StoredField("author", pAuthor));
+		lDocument.add(new StoredField("publisher", pPublisher));
+		
+		
+		lDocument.add(new SortedDocValuesField("title", new BytesRef(pTitle)));
+		lDocument.add(new SortedDocValuesField("cover", new BytesRef(pCover)));
+		lDocument.add(new SortedDocValuesField("author", new BytesRef(pAuthor)));
+		lDocument.add(new SortedDocValuesField("publisher", new BytesRef(pPublisher)));
+		
+		
+		lDocument.add(new LongPoint("pages", pPages));
+		lDocument.add(new LongPoint("isbn10", pISBN10));
+		lDocument.add(new LongPoint("isbn13", pISBN13));
+		
+		lDocument.add(new StoredField("pages", pPages));
+		lDocument.add(new StoredField("isbn10", pISBN10));
+		lDocument.add(new StoredField("isbn13", pISBN13));
+		
+		lDocument.add(new SortedNumericDocValuesField("pages", pPages));
+		lDocument.add(new SortedNumericDocValuesField("isbn10", pISBN10));
+		lDocument.add(new SortedNumericDocValuesField("isbn13", pISBN13));
 
 		pIndexWriter.addDocument(lDocument);
 	}
 
 	private static void getBooksFromIndex() throws IOException, ParseException {
-		
+
 		IndexReader lReader = DirectoryReader.open(lIndexDirectory);
 		IndexSearcher lSearcher = new IndexSearcher(lReader);
 
@@ -151,9 +186,9 @@ public class Indexer implements LuceneConstants {
 
 		TotalHitCountCollector collector = new TotalHitCountCollector();
 		lSearcher.search(new MatchAllDocsQuery(), collector);
-		
-		System.out.println("TOTAL HITS: "+collector.getTotalHits());
-		
+
+		System.out.println("TOTAL HITS: " + collector.getTotalHits());
+
 	}
 
 	private static void autoSuggest() throws Exception {
@@ -177,16 +212,16 @@ public class Indexer implements LuceneConstants {
 
 	public static void main(String args[]) throws Exception {
 		init();
-		Callable<Integer> callableObj = () -> { 
+		Callable<Integer> callableObj = () -> {
 			buildIndex();
 			return 0;
-			
+
 		};
 		List<Callable<Integer>> llistCallables = new ArrayList<Callable<Integer>>();
-		for(int i = 0 ; i < 50 ; i ++) {
+		for (int i = 0; i < 50; i++) {
 			llistCallables.add(callableObj);
 		}
-		ExecutorService executor = Executors.newFixedThreadPool(3);
+		ExecutorService executor = Executors.newFixedThreadPool(1);
 		double startTime = System.nanoTime();
 		List<Future<Integer>> futures = executor.invokeAll(llistCallables);
 		for (Future<?> future : futures) {
@@ -199,25 +234,23 @@ public class Indexer implements LuceneConstants {
 			}
 		}
 		while (executor.isTerminated()) {
-			
+
 		}
 		System.out.println("Finished executing all threads");
-		sIndexWriter.commit();
+		
 		sIndexWriter.close();
 		double endTime = System.nanoTime();
-		System.out.println("Time Taken for indexing: "+((endTime-startTime)/1000000000));
+		System.out.println("Time Taken for indexing: " + ((endTime - startTime) / 1000000000));
 		getBooksFromIndex();
 	}
-	
-	
+
 	private static void getFacetResults() throws IOException {
-		
+
 		IndexReader lReader = DirectoryReader.open(lIndexDirectory);
 		IndexSearcher lSearcher = new IndexSearcher(lReader);
-		
+
 		Query lQuery = new TermQuery(new Term("author", "albert"));
 	}
-	
 
 }
 
